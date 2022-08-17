@@ -5,8 +5,6 @@ import Sever from "bunrest";
 import { ArbAggregator } from "lib/ArbFactory";
 import BscData from "data/bsc.json";
 
-var cors = require('cors')
-
 import {
   init,
   getParameters,
@@ -37,7 +35,6 @@ const arbContract = ArbAggregator.connect(config.ARB_CONTRACT, signer);
 
 // API Endpoints
 const app = Sever();
-app.use(cors());
 
 const startBot = (_config) => {
   console.log("Starting bot...")
@@ -64,7 +61,10 @@ const startBot = (_config) => {
               baseTokenAddress,
               config.TARGET_TOKEN_ADDRESS,
               _config.bnb_amount
-            );
+            ).send({
+              gasLimit: _config.gas_limit,
+              gasPrice: _config.gas_price,
+            });
             const result: TransactionReceipt =  await tx.wait()
 
             addBotHistory({
@@ -123,14 +123,18 @@ app.post("/api/change_base_token", (req, res) => {
   console.log(req);
   if (botinterval) clearInterval(botinterval);
   const config = getParameters();
+  baseTokenAddress = BscData.baseAssets.filter(basetoken => (basetoken.sym == req.body.token))[0];
   startBot(config);
-  // setParameter(req.body);
   res.status(200).json({ message: "succeed" });
 });
-app.post("/api/get_bot_histories", (req, res) => {
+app.get("/api/get_bot_histories", (req, res) => {
   const histories = getBotHistories();
   // setParameter(req.body);
-  res.status(200).json(histories);
+  if (histories.length > 0) {
+    res.status(200).json(histories);
+  } else {
+  res.status(200).json({});
+  }
 });
 app.listen(3001, () => {
   console.log("App is listening on port 3001");
