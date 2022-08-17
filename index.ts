@@ -1,16 +1,18 @@
 import { Wallet } from "@ethersproject/wallet";
-import { JsonRpcProvider, WebSocketProvider } from "@ethersproject/providers";
-import { formatEther, formatUnits } from "@ethersproject/units";
+import {  TransactionReceipt, TransactionResponse, WebSocketProvider } from "@ethersproject/providers";
+import { formatEther, formatUnits, parseEther } from "@ethersproject/units";
 import Sever from "bunrest";
-import axios from "axios";
 import { ArbAggregator } from "lib/ArbFactory";
-import BscData from 'data/bsc.json'
+import BscData from "data/bsc.json";
+
+var cors = require('cors')
 
 import {
   init,
   getParameters,
   setParameter,
-  initializeParameter,
+  getBotHistories,
+  addBotHistory
 } from "./lib/database";
 
 init();
@@ -26,14 +28,67 @@ const config = {
   WEBSOCKET_PROVIDER: process.env.WEBSOCKET_PROVIDER,
   ARB_CONTRACT: process.env.ArbContract,
 };
-console.log(config.BLOCKCHAIN_PROVIDER);
-
+let baseTokenAddress = BscData.baseAssets[0];
+let botinterval;
 const provider = new WebSocketProvider(config.WEBSOCKET_PROVIDER);
 const signer = new Wallet(config.PRIVATE_KEY, provider);
+
 const arbContract = ArbAggregator.connect(config.ARB_CONTRACT, signer);
 
 // API Endpoints
 const app = Sever();
+app.use(cors());
+
+const startBot = (_config) => {
+  console.log("Starting bot...")
+  botinterval = setInterval(async () => {
+    for (let i = 0; i < BscData.routers.length; i++) {
+      for (let j = i + 1; j < BscData.routers.length; j++) {
+        try {
+          const amtBack = await ArbAggregator.estimateDualDexTrade(
+            BscData.routers[i],
+            BscData.routers[j],
+            baseTokenAddress,
+            config.TARGET_TOKEN_ADDRESS,
+            _config.bnb_amount
+          );
+          const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL);
+          if (
+            parseFloat(output) - _config.bnb_amount >
+            (_config.bnb_amount * _config.profit) / 100
+          ) {
+            console.log("Starting bot transaction...")
+            const tx:TransactionResponse = await ArbAggregator.dualTrade(
+              BscData.routers[i],
+              BscData.routers[j],
+              baseTokenAddress,
+              config.TARGET_TOKEN_ADDRESS,
+              _config.bnb_amount
+            );
+            const result: TransactionReceipt =  await tx.wait()
+
+            addBotHistory({
+              txHash: result.transactionHash,
+              dex_from:BscData.routers[i].dex,
+              dex_to:BscData.routers[j].dex,
+              base_token: baseTokenAddress.sym,
+              target_token: config.TARGET_TOKEN_SYMBOL,
+              amount_in: _config.bnb_amount,
+              amount_out: parseFloat(output),
+              profit:(parseFloat(output) /_config.bnb_amount) * 100, 
+              gas_used: parseInt(result.gasUsed.toString()),
+              datetime: new Date("yyyy-mm-dd HH:ii:ss")
+            })
+          } else {
+            continue;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+  }, _config.timelimit);
+};
 
 // get bot parameters
 app.get("/api/get_config", (req, res) => {
@@ -58,17 +113,31 @@ app.get("/api/get_base_token", (req, res) => {
 app.post("/api/save_config", (req, res) => {
   console.log(req);
   // setParameter(req.body);
+  if (botinterval) clearInterval(botinterval);
+  const config = getParameters();
+  startBot(config);
   res.status(200).json({ message: "succeed" });
 });
 
-app.post("/api/save_config", (req, res) => {
+app.post("/api/change_base_token", (req, res) => {
   console.log(req);
+  if (botinterval) clearInterval(botinterval);
+  const config = getParameters();
+  startBot(config);
   // setParameter(req.body);
   res.status(200).json({ message: "succeed" });
 });
-
+app.post("/api/get_bot_histories", (req, res) => {
+  const histories = getBotHistories();
+  // setParameter(req.body);
+  res.status(200).json(histories);
+});
 app.listen(3001, () => {
   console.log("App is listening on port 3001");
 });
 
 console.log("Hello via Bun!");
+
+if (botinterval) clearInterval(botinterval);
+const botConfig = getParameters();
+startBot(botConfig);
