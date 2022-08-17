@@ -1,5 +1,9 @@
 import { Wallet } from "@ethersproject/wallet";
-import {  TransactionReceipt, TransactionResponse, WebSocketProvider } from "@ethersproject/providers";
+import {
+  TransactionReceipt,
+  TransactionResponse,
+  WebSocketProvider,
+} from "@ethersproject/providers";
 import { formatEther, formatUnits, parseEther } from "@ethersproject/units";
 import Sever from "bunrest";
 import { ArbAggregator } from "lib/ArbFactory";
@@ -10,7 +14,7 @@ import {
   getParameters,
   setParameter,
   getBotHistories,
-  addBotHistory
+  addBotHistory,
 } from "./lib/database";
 
 init();
@@ -37,57 +41,85 @@ const arbContract = ArbAggregator.connect(config.ARB_CONTRACT, signer);
 const app = Sever();
 
 const startBot = (_config) => {
-  console.log("Starting bot...")
+  console.log("Starting bot...");
   botinterval = setInterval(async () => {
+    let max = 0;
+    let min = Math.pow(10, 5);
+    let min_index = 0; // best sell dex
+    let max_index = 0; // best buy dex
     for (let i = 0; i < BscData.routers.length; i++) {
-      for (let j = i + 1; j < BscData.routers.length; j++) {
-        try {
-          const amtBack = await ArbAggregator.estimateDualDexTrade(
-            BscData.routers[i],
-            BscData.routers[j],
-            baseTokenAddress,
-            config.TARGET_TOKEN_ADDRESS,
-            _config.bnb_amount
-          );
-          const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL);
-          if (
-            parseFloat(output) - _config.bnb_amount >
-            (_config.bnb_amount * _config.profit) / 100
-          ) {
-            console.log("Starting bot transaction...")
-            const tx:TransactionResponse = await ArbAggregator.dualTrade(
-              BscData.routers[i],
-              BscData.routers[j],
+      try {
+        const amtBack = await arbContract.getAmountOutMin(
+          BscData.routers[i],
+          baseTokenAddress,
+          config.TARGET_TOKEN_ADDRESS,
+          _config.bnb_amount
+        );
+        const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL);
+        // find best dexs for buying and selling
+        if (parseFloat(output) > max) {
+          max = parseFloat(output);
+          max_index = i;
+        }
+        if (parseFloat(output) < min) {
+          min = parseFloat(output);
+          min_index = i;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    // check if the profit is greater than desired amount
+    if (min_index !== max_index) {
+      try {
+        // Estimate actual output amount
+        const amtBack = await arbContract.estimateDualDexTrade(
+          BscData.routers[max_index],
+          BscData.routers[min_index],
+          baseTokenAddress,
+          config.TARGET_TOKEN_ADDRESS,
+          _config.bnb_amount
+        );
+        // convert output amount into human readable value.
+        const output = formatEther(amtBack);
+        if (
+          parseFloat(output) - _config.bnb_amount >
+          (_config.bnb_amount * _config.profit) / 100
+        ) {
+          console.log("Starting bot transaction...");
+          const tx: TransactionResponse = await arbContract
+            .dualTrade(
+              BscData.routers[max_index],
+              BscData.routers[min_index],
               baseTokenAddress,
               config.TARGET_TOKEN_ADDRESS,
               _config.bnb_amount
-            ).send({
+            )
+            .send({
               gasLimit: _config.gas_limit,
               gasPrice: _config.gas_price,
             });
-            const result: TransactionReceipt =  await tx.wait()
+          const result: TransactionReceipt = await tx.wait();
 
-            addBotHistory({
-              txHash: result.transactionHash,
-              dex_from:BscData.routers[i].dex,
-              dex_to:BscData.routers[j].dex,
-              base_token: baseTokenAddress.sym,
-              target_token: config.TARGET_TOKEN_SYMBOL,
-              amount_in: _config.bnb_amount,
-              amount_out: parseFloat(output),
-              profit:(parseFloat(output) /_config.bnb_amount) * 100, 
-              gas_used: parseInt(result.gasUsed.toString()),
-              datetime: new Date("yyyy-mm-dd HH:ii:ss")
-            })
-          } else {
-            continue;
-          }
-        } catch {
-          continue;
+          addBotHistory({
+            txHash: result.transactionHash,
+            dex_from: BscData.routers[max_index].dex,
+            dex_to: BscData.routers[min_index].dex,
+            base_token: baseTokenAddress.sym,
+            target_token: config.TARGET_TOKEN_SYMBOL,
+            amount_in: _config.bnb_amount,
+            amount_out: parseFloat(output),
+            profit: (parseFloat(output) / _config.bnb_amount) * 100,
+            gas_used: parseInt(result.gasUsed.toString()),
+            datetime: new Date("yyyy-mm-dd HH:ii:ss"),
+          });
         }
+      } catch {
+        console.log("failed to execute transaction.");
       }
     }
-  }, _config.timelimit);
+  }, parseInt(_config.timelimit) * 1000 );
 };
 
 // get bot parameters
@@ -110,21 +142,26 @@ app.get("/api/get_base_token", (req, res) => {
   res.status(200).json(BscData.baseAssets);
 });
 
-app.post("/api/save_config", (req, res) => {
-  console.log(req);
-  // setParameter(req.body);
+app.post("/api/save_config", async (req, res) => {
+  console.log(await req.text());
+  setParameter(JSON.parse(await req.text()));
   if (botinterval) clearInterval(botinterval);
   const config = getParameters();
   startBot(config);
   res.status(200).json({ message: "succeed" });
 });
 
-app.post("/api/change_base_token", (req, res) => {
-  console.log(req);
+app.post("/api/change_base_token", async (req, res) => {
+  console.log(await req.text());
+  const params = JSON.parse(await req.text());
+  baseTokenAddress = BscData.baseAssets.filter(
+    (basetoken) => basetoken.sym == params.token
+  )[0];
+
+  const bot_config = getParameters();
   if (botinterval) clearInterval(botinterval);
-  const config = getParameters();
-  baseTokenAddress = BscData.baseAssets.filter(basetoken => (basetoken.sym == req.body.token))[0];
-  startBot(config);
+  startBot(bot_config);
+
   res.status(200).json({ message: "succeed" });
 });
 app.get("/api/get_bot_histories", (req, res) => {
@@ -133,7 +170,7 @@ app.get("/api/get_bot_histories", (req, res) => {
   if (histories.length > 0) {
     res.status(200).json(histories);
   } else {
-  res.status(200).json({});
+    res.status(200).json({});
   }
 });
 app.listen(3001, () => {
