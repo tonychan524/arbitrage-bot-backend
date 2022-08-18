@@ -53,7 +53,7 @@ const startBot = (_config) => {
           BscData.routers[i].address,
           baseTokenAddress.address,
           config.TARGET_TOKEN_ADDRESS,
-          _config.bnb_amount,
+          parseEther(_config.bnb_amount.toString()),
         )
         const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL)
         // find best dexs for buying and selling
@@ -79,7 +79,7 @@ const startBot = (_config) => {
           BscData.routers[min_index].address,
           baseTokenAddress.address,
           config.TARGET_TOKEN_ADDRESS,
-          _config.bnb_amount,
+          parseEther(_config.bnb_amount.toString()),
         )
         // convert output amount into human readable value.
         const output = formatEther(amtBack)
@@ -94,7 +94,7 @@ const startBot = (_config) => {
               BscData.routers[min_index].address,
               baseTokenAddress.address,
               config.TARGET_TOKEN_ADDRESS,
-              _config.bnb_amount,
+              parseEther(_config.bnb_amount.toString()),
             )
             .send({
               gasLimit: _config.gas_limit,
