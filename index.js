@@ -6,7 +6,8 @@ import {
 } from '@ethersproject/providers'
 import {
   formatEther,
-  formatUnits
+  formatUnits,
+  parseEther
 } from '@ethersproject/units'
 import {
   ArbAggregator
@@ -17,12 +18,6 @@ import {
 } from './data/bsc.js'
 import dotenv from 'dotenv'
 import fs from 'fs'
-import {
-  blue,
-  green,
-  red
-} from 'chalk'
-
 dotenv.config()
 
 const config = {
@@ -38,11 +33,6 @@ const config = {
 let baseTokenAddress = baseAssets[0]
 const provider = new JsonRpcProvider(config.BLOCKCHAIN_PROVIDER)
 const signer = new Wallet(config.PRIVATE_KEY, provider);
-const getBalance = async () => {
-  const balance = await signer.getBalance()
-  console.log(formatEther(balance))
-}
-getBalance()
 
 const arbContract = ArbAggregator.connect(config.ARB_CONTRACT, signer)
 
@@ -53,7 +43,7 @@ const bot_config = {
   profit: 4,
   liquidity: 1000000,
   time_limit: 10,
-  bnb_amount: 0.1,
+  bnb_amount: "0.1",
 }
 
 const startBot = async (_config) => {
@@ -63,30 +53,31 @@ const startBot = async (_config) => {
   let min_index = 0 // best sell dex
   let max_index = 0 // best buy dex
   for (let i = 0; i < routers.length; i++) {
-    try {
-      const amtBack = await arbContract.getAmountOutMin(
-        routers[i].address,
-        baseTokenAddress,
-        config.TARGET_TOKEN_ADDRESS,
-        _config.bnb_amount,
-      )
-      const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL)
-      console.log(blue("expected amount output: ", output))
-      // find best dexs for buying and selling
-      if (parseFloat(output) > max) {
-        max = parseFloat(output)
-        max_index = i
-      }
-      if (parseFloat(output) < min) {
-        min = parseFloat(output)
-        min_index = i
-      }
-    } catch {
-      continue
+    // try {
+    const amtBack = await arbContract.getAmountOutMin(
+      routers[i].address,
+      baseTokenAddress.address,
+      config.TARGET_TOKEN_ADDRESS,
+      parseEther(_config.bnb_amount),
+    )
+    console.log(amtBack)
+    const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL)
+    console.log("expected amount output: ", output)
+    // find best dexs for buying and selling
+    if (parseFloat(output) > max) {
+      max = parseFloat(output)
+      max_index = i
     }
+    if (parseFloat(output) < min) {
+      min = parseFloat(output)
+      min_index = i
+    }
+    // } catch {
+    //   continue
+    // }
   }
-  console.log(red("min router: ", routers[max_index].dex))
-  console.log(red("max router: ", routers[min_index].dex))
+  console.log("min router: ", routers[max_index].dex)
+  console.log("max router: ", routers[min_index].dex)
   // check if the profit is greater than desired amount
   if (min_index !== max_index) {
     try {
@@ -94,25 +85,25 @@ const startBot = async (_config) => {
       const amtBack = await arbContract.estimateDualDexTrade(
         routers[max_index].address,
         routers[min_index].address,
-        baseTokenAddress,
+        baseTokenAddress.address,
         config.TARGET_TOKEN_ADDRESS,
-        _config.bnb_amount,
+        parseEther(_config.bnb_amount),
       )
       // convert output amount into human readable value.
       const output = formatEther(amtBack)
-      console.log(green("expected final amount output: ", output))
+      console.log("expected final amount output: ", output)
       if (
         parseFloat(output) - _config.bnb_amount >
         (_config.bnb_amount * _config.profit) / 100
       ) {
-        console.log('Starting bot transaction...')
+        console.log('Starting swap transaction...')
         const tx = await arbContract
           .dualTrade(
             routers[max_index].address,
             routers[min_index].address,
-            baseTokenAddress,
+            baseTokenAddress.address,
             config.TARGET_TOKEN_ADDRESS,
-            _config.bnb_amount,
+            parseEther(_config.bnb_amount),
           )
           .send({
             gasLimit: _config.gas_limit,
