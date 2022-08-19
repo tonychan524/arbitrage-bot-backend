@@ -16,6 +16,8 @@ import {
   routers,
   baseAssets
 } from './data/bsc.js'
+import express from 'express'
+import cors from 'cors'
 import dotenv from 'dotenv'
 import fs from 'fs'
 dotenv.config()
@@ -36,7 +38,8 @@ const signer = new Wallet(config.PRIVATE_KEY, provider);
 
 const arbContract = ArbAggregator.connect(config.ARB_CONTRACT, signer)
 
-const bot_config = {
+let botinterval;
+let bot_config = {
   slippage: 10,
   gas_price: 10,
   gas_limit: 21000,
@@ -45,6 +48,77 @@ const bot_config = {
   time_limit: 10,
   bnb_amount: "0.1",
 }
+
+const app = express();
+app.use(cors())
+
+// get bot parameters
+app.get("/api/get_config", (req, res) => {
+  res.status(200).json(bot_config);
+});
+
+app.get("/api/get_target_token", (req, res) => {
+  console.log("requested to get target token info");
+  res.status(200).json({
+    address: config.TARGET_TOKEN_ADDRESS,
+    symbol: config.TARGET_TOKEN_SYMBOL,
+    decimal: config.TARGET_TOKEN_DECIMAL,
+  });
+});
+
+app.get("/api/get_base_token", (req, res) => {
+  console.log("requested to get target token info");
+  res.status(200).json(baseAssets);
+});
+
+app.post("/api/save_config", async (req, res) => {
+  const new_params = req.body;
+  bot_config = {
+    slippage: parseInt(new_params.slippage),
+    gas_price: parseInt(new_params.gas_price),
+    gas_limit: parseInt(new_params.gas_limit),
+    profit: parseInt(new_params.profit),
+    liquidity: parseInt(new_params.liquidity),
+    time_limit: parseInt(new_params.time_limit),
+    bnb_amount: new_params.bnb_amount,
+  }
+  if (botinterval) clearInterval(botinterval);
+  botinterval = setInterval(() => {
+    startBot(bot_config)
+  }, bot_config.time_limit * 1000)
+  res.status(200).json({
+    message: "succeed"
+  });
+});
+
+app.post("/api/change_base_token", async (req, res) => {
+  const params = req.body.token;
+  baseTokenAddress = baseAssets.filter(
+    (basetoken) => basetoken.sym == params
+  )[0];
+
+  if (botinterval) clearInterval(botinterval);
+
+  botinterval = setInterval(() => {
+    startBot(bot_config)
+  }, bot_config.time_limit * 1000)
+
+  res.status(200).json({
+    message: "succeed"
+  });
+});
+app.get("/api/get_bot_histories", (req, res) => {
+  // const histories = getBotHistories();
+  // // setParameter(req.body);
+  // if (histories.length > 0) {
+  //   res.status(200).json(histories);
+  // } else {
+  res.status(200).json({});
+  // }
+});
+app.listen(3001, () => {
+  console.log("App is listening on port 3001");
+});
 
 const startBot = async (_config) => {
   console.log('Starting bot...')
@@ -139,6 +213,6 @@ const startBot = async (_config) => {
     }
   }
 }
-setInterval(() => {
+botinterval = setInterval(() => {
   startBot(bot_config)
 }, bot_config.time_limit * 1000)
