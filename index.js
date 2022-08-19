@@ -63,6 +63,7 @@ app.get("/api/get_target_token", (req, res) => {
     address: config.TARGET_TOKEN_ADDRESS,
     symbol: config.TARGET_TOKEN_SYMBOL,
     decimal: config.TARGET_TOKEN_DECIMAL,
+    basetoken: baseTokenAddress
   });
 });
 
