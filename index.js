@@ -75,13 +75,13 @@ app.get("/api/get_base_token", (req, res) => {
 app.post("/api/save_config", async (req, res) => {
   const new_params = req.query;
   const new_bot_config = {
-    slippage: parseInt(new_params.slippage),
-    gas_price: parseInt(new_params.gas_price),
-    gas_limit: parseInt(new_params.gas_limit),
-    profit: parseInt(new_params.profit),
-    liquidity: parseInt(new_params.liquidity),
-    time_limit: parseInt(new_params.time_limit),
-    bnb_amount: new_params.bnb_amount,
+    slippage: parseInt(new_params?.slippage),
+    gas_price: parseInt(new_params?.gas_price),
+    gas_limit: parseInt(new_params?.gas_limit),
+    profit: parseInt(new_params?.profit),
+    liquidity: parseInt(new_params?.liquidity),
+    time_limit: parseInt(new_params?.time_limit),
+    bnb_amount: new_params?.bnb_amount,
   }
   if (new_bot_config.slippage) bot_config = new_bot_config;
   if (botinterval) clearInterval(botinterval);
