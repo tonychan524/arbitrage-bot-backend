@@ -127,28 +127,28 @@ const startBot = async (_config) => {
   let min_index = 0 // best sell dex
   let max_index = 0 // best buy dex
   for (let i = 0; i < routers.length; i++) {
-    // try {
-    const amtBack = await arbContract.getAmountOutMin(
-      routers[i].address,
-      baseTokenAddress.address,
-      config.TARGET_TOKEN_ADDRESS,
-      parseEther(_config.bnb_amount),
-    )
-    console.log(amtBack)
-    const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL)
-    console.log("expected amount output: ", output)
-    // find best dexs for buying and selling
-    if (parseFloat(output) > max) {
-      max = parseFloat(output)
-      max_index = i
+    try {
+      const amtBack = await arbContract.getAmountOutMin(
+        routers[i].address,
+        baseTokenAddress.address,
+        config.TARGET_TOKEN_ADDRESS,
+        parseEther(_config.bnb_amount),
+      )
+      console.log(amtBack)
+      const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL)
+      console.log("expected amount output: ", output)
+      // find best dexs for buying and selling
+      if (parseFloat(output) > max) {
+        max = parseFloat(output)
+        max_index = i
+      }
+      if (parseFloat(output) < min) {
+        min = parseFloat(output)
+        min_index = i
+      }
+    } catch {
+      continue
     }
-    if (parseFloat(output) < min) {
-      min = parseFloat(output)
-      min_index = i
-    }
-    // } catch {
-    //   continue
-    // }
   }
   console.log("min router: ", routers[max_index].dex)
   console.log("max router: ", routers[min_index].dex)
@@ -171,20 +171,23 @@ const startBot = async (_config) => {
         (_config.bnb_amount * _config.profit) / 100
       ) {
         console.log('Starting swap transaction...')
-        const tx = await arbContract
-          .dualTrade(
-            routers[max_index].address,
-            routers[min_index].address,
-            baseTokenAddress.address,
-            config.TARGET_TOKEN_ADDRESS,
-            parseEther(_config.bnb_amount),
-          )
-          .send({
-            gasLimit: _config.gas_limit,
-            gasPrice: _config.gas_price,
-          })
-        const result = await tx.wait()
-
+        try {
+          const tx = await arbContract
+            .dualTrade(
+              routers[max_index].address,
+              routers[min_index].address,
+              baseTokenAddress.address,
+              config.TARGET_TOKEN_ADDRESS,
+              parseEther(_config.bnb_amount),
+            )
+            .send({
+              gasLimit: _config.gas_limit,
+              gasPrice: _config.gas_price,
+            })
+          const result = await tx.wait()
+        } catch {
+          console.log('error in swap transaction...')
+        }
         try {
           const writeStream = fs.createWriteStream('bot_history.txt', {
             flags: 'a',
