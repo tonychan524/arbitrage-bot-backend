@@ -72,8 +72,8 @@ app.get("/api/get_base_token", (req, res) => {
 });
 
 app.post("/api/save_config", async (req, res) => {
-  const new_params = req.body;
-  bot_config = {
+  const new_params = req.query;
+  const new_bot_config = {
     slippage: parseInt(new_params.slippage),
     gas_price: parseInt(new_params.gas_price),
     gas_limit: parseInt(new_params.gas_limit),
@@ -82,6 +82,7 @@ app.post("/api/save_config", async (req, res) => {
     time_limit: parseInt(new_params.time_limit),
     bnb_amount: new_params.bnb_amount,
   }
+  if (new_bot_config.slippage) bot_config = new_bot_config;
   if (botinterval) clearInterval(botinterval);
   botinterval = setInterval(() => {
     startBot(bot_config)
@@ -92,7 +93,7 @@ app.post("/api/save_config", async (req, res) => {
 });
 
 app.post("/api/change_base_token", async (req, res) => {
-  const params = req.body.token;
+  const params = req.query?.token;
   baseTokenAddress = baseAssets.filter(
     (basetoken) => basetoken.sym == params
   )[0];
