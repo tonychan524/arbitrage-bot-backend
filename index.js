@@ -43,10 +43,10 @@ let bot_config = {
   slippage: 10,
   gas_price: 10,
   gas_limit: 21000,
-  profit: 4,
+  profit: 2,
   liquidity: 1000000,
   time_limit: 10,
-  bnb_amount: "0.1",
+  bnb_amount: "0.05",
 }
 
 const app = express();
@@ -138,7 +138,7 @@ const startBot = async (_config) => {
       )
       console.log(amtBack)
       const output = formatUnits(amtBack, config.TARGET_TOKEN_DECIMAL)
-      console.log("expected amount output: ", output)
+      console.log("expected amount output: ", output, " from ", routers[i].dex)
       // find best dexs for buying and selling
       if (parseFloat(output) > max) {
         max = parseFloat(output)
